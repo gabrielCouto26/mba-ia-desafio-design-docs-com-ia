@@ -1,3 +1,21 @@
-# Tracker
+| ID | Documento | Tipo | Conteudo (resumo) | Fonte | Localizacao |
+|---|---|---|---|---|---|
+| PRD-MET-001 | [docs/PRD.md](docs/PRD.md) | Requisito Não Funcional | Meta de primeira entrega: 90% dos primeiros envios <= 10s | TRANSCRICAO | [09:02] Marcos |
+| PRD-REQ-001 | [docs/PRD.md](docs/PRD.md) | Requisito Funcional | CRUD de endpoints de webhook (create/list/patch/delete) com validação de URL/secret | TRANSCRICAO | [09:31] Marcos |
+| PRD-REQ-002 | [docs/PRD.md](docs/PRD.md) | Requisito Funcional | Inserir evento na outbox dentro da mesma transação de mudança de status do pedido | TRANSCRICAO | [09:41] Bruno |
+| RFC-DEC-001 | [docs/adrs/ADR-001-outbox-no-mysql.md](docs/adrs/ADR-001-outbox-no-mysql.md) | Decisao | Adotar padrão Outbox no MySQL para persistir eventos de webhook | TRANSCRICAO | [09:06] Diego |
+| ADR-002 | [docs/adrs/ADR-002-politica-de-retry-backoff-e-dlq.md](docs/adrs/ADR-002-politica-de-retry-backoff-e-dlq.md) | Decisao | Política de retry: 5 tentativas com backoff 1m/5m/30m/2h/12h e DLQ separada | TRANSCRICAO | [09:15] Diego |
+| ADR-003 | [docs/adrs/ADR-003-assinatura-hmac-sha256-por-endpoint.md](docs/adrs/ADR-003-assinatura-hmac-sha256-por-endpoint.md) | Decisao | Assinatura HMAC-SHA256 por endpoint; secret por endpoint e rotação com grace period 24h; exigir HTTPS | TRANSCRICAO | [09:19] Sofia |
+| ADR-004 | [docs/adrs/ADR-004-entrega-at-least-once-com-x-event-id.md](docs/adrs/ADR-004-entrega-at-least-once-com-x-event-id.md) | Decisao | Entrega at-least-once e uso de `X-Event-Id` (UUID) para deduplicação pelo consumidor | TRANSCRICAO | [09:24] Diego |
+| ADR-005 | [docs/adrs/ADR-005-worker-separado-com-polling.md](docs/adrs/ADR-005-worker-separado-com-polling.md) | Decisao | Worker separado com polling a cada 2s; entrypoint próprio (`src/worker.ts`) e instância Prisma por processo | TRANSCRICAO | [09:09] Diego |
+| PRD-REQ-003 | [docs/PRD.md](docs/PRD.md) | Requisito Funcional | DLQ persistida em tabela separada e endpoint admin para replay; replay exige role `ADMIN` | TRANSCRICAO | [09:18] Diego |
+| FDD-CON-001 | [docs/FDD.md](docs/FDD.md) | Contrato | Cabeçalhos obrigatórios nas entregas: `X-Event-Id`, `X-Timestamp`, `X-Signature`, `X-Webhook-Id` | TRANSCRICAO | [09:44] Diego |
+| PRD-RSK-001 | [docs/PRD.md](docs/PRD.md) | Risco | Risco de duplicidade de entregas; mitigação: deduplicação por `X-Event-Id` e documentação aos clientes | TRANSCRICAO | [09:24] Diego |
+| PRD-REQ-004 | [docs/FDD.md](docs/FDD.md) | Requisito Funcional | Worker entrypoint e script (`npm run worker`), reuso do PrismaClient em processo separado | TRANSCRICAO | [09:11] Larissa |
+| CODE-001 | [docs/FDD.md](docs/FDD.md) | Evidencia tecnica | `OrderService.changeStatus()` contém transação; ponto de integração pro insert da outbox (evidência de código que será alterado) | CODIGO | [src/modules/orders/order.service.ts](src/modules/orders/order.service.ts) |
+| CODE-002 | [docs/adrs/ADR-006-reuso-de-padroes-existentes-do-projeto.md](docs/adrs/ADR-006-reuso-de-padroes-existentes-do-projeto.md) | Evidencia tecnica | Projeto usa padrão por domínio em `src/modules/*` (controller/service/repository/routes/schemas) — base para novo módulo `webhooks` | CODIGO | [src/modules/orders/order.routes.ts](src/modules/orders/order.routes.ts) |
+| CODE-003 | [docs/adrs/ADR-002-politica-de-retry-backoff-e-dlq.md](docs/adrs/ADR-002-politica-de-retry-backoff-e-dlq.md) | Evidencia tecnica | Middleware e helpers de autenticação/autorização existentes suportam `requireRole('ADMIN')` para endpoints administrativos | CODIGO | [src/middlewares/auth.middleware.ts](src/middlewares/auth.middleware.ts) |
+| CODE-004 | [docs/adrs/ADR-006-reuso-de-padroes-existentes-do-projeto.md](docs/adrs/ADR-006-reuso-de-padroes-existentes-do-projeto.md) | Evidencia tecnica | Logger Pino e padrões de logs estruturados disponíveis e reutilizaveis para webhooks | CODIGO | [src/shared/logger/index.ts](src/shared/logger/index.ts) |
+| CODE-005 | [docs/FDD.md](docs/FDD.md) | Evidencia tecnica | Utilitários de resposta/erro e contratos HTTP padronizados a serem reutilizados pelo módulo de webhooks | CODIGO | [src/shared/http/response.ts](src/shared/http/response.ts) |# Tracker
 
 <!-- acompanhamento do trabalho será preenchido posteriormente -->
