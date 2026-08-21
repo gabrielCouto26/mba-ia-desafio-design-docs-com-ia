@@ -48,4 +48,4 @@ O worker deve usar sua própria instância de `PrismaClient`, pois roda em outro
 
 - Transcrição: [09:08]-[09:11], decisão por polling a cada 2 segundos e processo separado; [09:11], proposta de `src/worker.ts` e script `npm run worker`; [09:29]-[09:30], PrismaClient separado por processo.
 - Código-base: `src/server.ts` é o entrypoint HTTP atual; `src/config/database.ts` fornece conexão Prisma; `src/shared/logger/index.ts` fornece logger reutilizável.
-- Documentos relacionados: `docs/PRD.md`, `docs/RFC.md`, `docs/FDD.md` existem, mas ainda estão como placeholders.
+- Documentos relacionados: `docs/PRD.md`, `docs/RFC.md` e `docs/FDD.md` detalham os requisitos e a proposta de implementação.

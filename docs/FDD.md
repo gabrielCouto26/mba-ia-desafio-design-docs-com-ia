@@ -5,9 +5,9 @@ Autor: Tech Lead (gerado automaticamente)
 
 ## 1. Contexto e motivação técnica
 
-Resumo técnico: clientes B2B precisam receber notificações em tempo quase real sobre mudanças de status de pedidos. A proposta (ver [docs/RFC.md](docs/RFC.md)) recomenda padrão outbox no MySQL e worker separado para entrega HTTP assinada (HMAC-SHA256), garantindo que a gravação do evento ocorra dentro da mesma transação do domínio de pedidos e que a entrega externa ocorra assincrona e resiliente.
+Resumo técnico: clientes B2B precisam receber notificações em tempo quase real sobre mudanças de status de pedidos. A proposta (ver [RFC.md](RFC.md)) recomenda padrão outbox no MySQL e worker separado para entrega HTTP assinada (HMAC-SHA256), garantindo que a gravação do evento ocorra dentro da mesma transação do domínio de pedidos e que a entrega externa ocorra assincrona e resiliente.
 
-Referências: [docs/RFC.md](docs/RFC.md), ADR-001..ADR-006 em `docs/adrs/`.
+Referências: [RFC.md](RFC.md), ADR-001..ADR-006 em `adrs/`.
 
 Atores: `OrderService` (produtor), `WebhookWorker` (consumidor/entregador), operadores/admins, consumidores externos (clientes B2B).
 
@@ -29,7 +29,7 @@ Hipótese: SLA de 10s para primeiro envio será atendido com polling a cada 2s e
 Incluído:
 - Tabela `outbox` no MySQL e migração correspondente.
 - Módulo `src/modules/webhooks` com `controller`, `service`, `repository`, `schemas` (Zod) e rotas.
-- Worker Node.js autônomo `src/modules/webhooks/worker.ts` (entrypoint separado) que faz polling a cada 2s.
+- Worker Node.js autônomo `src/worker.ts` (entrypoint separado), com a lógica de processamento em `src/modules/webhooks`, que faz polling a cada 2s.
 - Assinatura HMAC-SHA256, headers de entrega, retries, DLQ, histórico de entregas e endpoints administrativos para replay.
 
 Excluído (fora do MVP):
@@ -50,13 +50,17 @@ Excluído (fora do MVP):
   3. Construir payload mínimo do evento (ver esquema abaixo).
   4. Inserir linha na tabela `webhook_outbox` com status `pending`, `attempts = 0`, `next_try_at = NOW()` e `created_at`.
 - Payload mínimo (JSON):
-  - `eventId` (UUID v4)
-  - `eventType` = `order.status_changed`
-  - `orderId`
-  - `previousStatus`
-  - `newStatus`
-  - `occurredAt` (ISO8601)
-  - `metadata` (opcional: actorId, tenantId)
+  - `event_id` (UUID v4)
+  - `event_type` = `order.status_changed`
+  - `timestamp` (ISO8601)
+  - `order_id`
+  - `order_number`
+  - `from_status`
+  - `to_status`
+  - `customer_id`
+  - `total_cents`
+  - Não incluir `items`; o consumidor pode consultar `GET /orders/:id` para detalhes.
+- Limite: rejeitar payloads acima de 64KB; não truncar o evento.
 - Persistência: a inserção da outbox deve estar na mesma transação que as alterações do pedido — se a transação der rollback, nada é escrito.
 - Falhas: se inserção da outbox falhar (ex: unique constraint), abortar a transação e lançar erro tratável para o chamador (log e retry por chamada externa). Registrar métrica `webhook.outbox.insert_failed`.
 - Saída esperada: linha criada em `webhook_outbox` com `status = pending`.
@@ -73,7 +77,7 @@ Excluído (fora do MVP):
      - Body: o payload persistido em outbox (ou versão compactada/limitada)
   5. Enviar com timeout de 10s por request e acompanhar código HTTP e latency.
   6. On success (HTTP 2xx): marcar entrega como `delivered`, incrementar `attempts`, salvar `delivered_at` e registro em `webhook_delivery_history`.
-  7. On client error (HTTP 4xx): considerar não-recuperável dependendo do código; para 410/404 marcar `permanent_failed` e enviar para DLQ; para 429/403 considerar retry with backoff.
+  7. On client error (HTTP 4xx): considerar não-recuperável, exceto 429; para 410/404 marcar `permanent_failed` e enviar para DLQ.
   8. On server error (HTTP 5xx) or timeout/network error: incrementar `attempts`, calcular `next_try_at` por backoff, set status back to `pending` e release lock.
 
 - Timeout e cancelamento: usar request timeout configurável (`WEBHOOK_HTTP_TIMEOUT_MS`, default 10000ms). Se exceder, tratar como retriable network error.
@@ -97,21 +101,21 @@ Excluído (fora do MVP):
 
 - Critério: attempts >= max OR resposta 410/404 sem chance de reativação.
 - Dados preservados: evento original, endpointId, attempts, last_error, first_attempt_at, last_attempt_at, delivery_history (list), created_at.
-- Consulta/Reprocessamento: API administrativa `POST /webhooks/dlq/:id/reprocess` que cria nova linha em outbox com novo `eventId` (ou reusa mesmo id se desejar dedup) e reseta `attempts` (reprocessamento autorizado somente por role `ADMIN`).
+- Consulta/Reprocessamento: API administrativa `POST /admin/webhooks/dead-letter/:id/replay` que recoloca o evento na outbox como pendente e reseta `attempts` (autorizada somente por role `ADMIN`). O replay deve preservar o `event_id` para permitir deduplicação pelo consumidor.
 - Responsabilidade operacional: equipe de platforma deve monitorar métricas `webhook.dlq.size` e criar runbook para investigar e reprocessar manualmente.
 
 ### 4.5 Fluxos alternativos e excecoes
 
 - Endpoint inativo/desativado: se `webhook_endpoints.active = false`, não criar outbox para aquele endpoint.
 - Payload inválido: validação do payload antes de inserir; se inválido, não inserir e registrar `WEBHOOK_PAYLOAD_INVALID`.
-- Secret ausente: endpoint configurado sem secret => marca endpoint como `invalid` e notifica operação (erro `WEBHOOK_SECRET_MISSING`).
+- Secret: a plataforma gera a secret na criação do endpoint e a devolve uma única vez na resposta. Rotação posterior mantém a secret anterior válida por 24 horas.
 - Consumidor indisponível: tratado via retries e DLQ.
 - Resposta 4xx do consumidor: se 4xx != 429, tratar como não-recoverável (DLQ) exceto quando cliente solicitar reprocessamento manual.
 - Duplicidade: consumidores devem deduplicar por `X-Event-Id`; eventos podem ser re-enviados (at-least-once).
 
 ## 5. Contratos públicos (APIs)
 
-Observação: todas as rotas seguem autenticação `Bearer JWT` com role `ADMIN` para criação/alteração; leitura pode ser `ADMIN` ou `USER` com permissões adequadas.
+Observação: todas as rotas exigem autenticação `Bearer JWT`. O CRUD e a consulta de deliveries aceitam qualquer role autenticada; o replay de DLQ exige role `ADMIN`.
 
 #### [POST] /webhooks
 
@@ -124,8 +128,8 @@ Observação: todas as rotas seguem autenticação `Bearer JWT` com role `ADMIN`
 {
   "name": "orders-status",
   "url": "https://client.example.com/webhooks/orders",
-  "secret": "base64-or-plain-secret", 
-  "filters": { "eventTypes": ["order.status_changed"] },
+  "statuses": ["SHIPPED", "DELIVERED"],
+  "customerId": "customer-uuid",
   "active": true
 }
 ```
@@ -137,17 +141,18 @@ Observação: todas as rotas seguem autenticação `Bearer JWT` com role `ADMIN`
   "id": "uuid",
   "name": "orders-status",
   "url": "https://client.example.com/webhooks/orders",
-  "active": true
+  "active": true,
+  "secret": "generated-by-platform"
 }
 ```
 
 - Status codes:
   - 201 Created
-  - 400 Bad Request (WEBHOOK_INVALID_URL, WEBHOOK_SECRET_MISSING)
+  - 400 Bad Request (WEBHOOK_INVALID_URL)
   - 401 Unauthorized
 
-- Semântica: valida URL (must be https), persiste `webhook_endpoints`.
-- Erros WEBHOOK_ relacionados: `WEBHOOK_INVALID_URL`, `WEBHOOK_SECRET_MISSING`, `WEBHOOK_ENDPOINT_ALREADY_EXISTS`
+- Semântica: valida URL (must be https), gera a secret, persiste `webhook_endpoints` e devolve a secret na criação.
+- Erros WEBHOOK_ relacionados: `WEBHOOK_INVALID_URL`, `WEBHOOK_ENDPOINT_ALREADY_EXISTS`
 
 #### [GET] /webhooks
 
@@ -182,6 +187,13 @@ Observação: todas as rotas seguem autenticação `Bearer JWT` com role `ADMIN`
 
 - Erros: `WEBHOOK_ENDPOINT_NOT_FOUND`, `WEBHOOK_INVALID_URL`
 
+#### [POST] /webhooks/:id/rotate-secret
+
+- Objetivo: gerar uma nova secret para o endpoint
+- Autenticação: `Authorization: Bearer <token>` (qualquer role autenticada)
+- Response: 200 OK com a nova secret; a secret anterior permanece válida por 24 horas
+- Erros: `WEBHOOK_ENDPOINT_NOT_FOUND`, `WEBHOOK_SECRET_ROTATION_FAILED`
+
 #### [POST] /webhooks/:id/deactivate
 
 - Objetivo: desativar rapidamente um endpoint (idempotente)
@@ -189,10 +201,11 @@ Observação: todas as rotas seguem autenticação `Bearer JWT` com role `ADMIN`
 - Response: 200 OK
 - Erros: `WEBHOOK_ENDPOINT_NOT_FOUND`
 
-#### [GET] /webhooks/deliveries?eventId=&endpointId=&status=
+#### [GET] /webhooks/:id/deliveries
 
 - Objetivo: consultar histórico de entregas
-- Autenticação: `Authorization: Bearer <token>` (role `ADMIN`)
+- Autenticação: `Authorization: Bearer <token>` (qualquer role autenticada)
+- Semântica: retorna os últimos 100 deliveries do endpoint, incluindo payload, response, status, erro, attempt e latência.
 - Response exemplo:
 
 ```json
@@ -207,13 +220,12 @@ Observação: todas as rotas seguem autenticação `Bearer JWT` com role `ADMIN`
 
 - Status codes: 200, 404 (WEBHOOK_EVENT_NOT_FOUND)
 
-#### [POST] /webhooks/dlq/:id/reprocess
+#### [POST] /admin/webhooks/dead-letter/:id/replay
 
-- Objetivo: reprocessar evento na DLQ (cria nova tentativa na outbox)
+- Objetivo: reprocessar evento na DLQ, recolocando-o na outbox como pendente
 - Autenticação: `Authorization: Bearer <token>` (role `ADMIN`)
-- Request body opcional: `{ "forceEventId": false }`
-- Response: 202 Accepted com novo `outboxId`
-- Erros: `WEBHOOK_DLQ_REPROCESS_FAILED`, `WEBHOOK_DLQ_NOT_FOUND`
+- Response: 202 Accepted com `outboxId`
+- Erros: `WEBHOOK_DLQ_REPLAY_FAILED`, `WEBHOOK_DLQ_NOT_FOUND`
 
 Observação: para cada endpoint, o worker envia cabeçalhos de entrega:
 - `X-Event-Id: <uuid>`
@@ -225,7 +237,7 @@ Idempotencia: consumidores serão instruídos a deduplicar por `X-Event-Id`.
 
 Versionamento: adicionar `X-Webhook-Version` header no futuro para breaking changes.
 
-Rate limits: Hipótese — por agora, não implementado; documentar comportamento e limites no portal.
+Rate limits: por agora, não implementado; observar volume e taxa de erro antes de decidir uma política por cliente.
 
 ## 6. Matriz de erros previstos
 
@@ -234,8 +246,9 @@ Rate limits: Hipótese — por agora, não implementado; documentar comportament
 | WEBHOOK_ENDPOINT_NOT_FOUND | Endpoint id não existe | 400/404 para chamadas admin | no | registrar e retornar 404 |
 | WEBHOOK_ENDPOINT_INACTIVE | Endpoint desativado | rejeitar criação de outbox para esse endpoint | no | evento não criado para esse endpoint |
 | WEBHOOK_INVALID_URL | URL inválida (não-https ou parse fail) | validar e recusar criação | no | 400 |
-| WEBHOOK_SECRET_MISSING | Secret não fornecido | recusar criação/ativação | no | 400 |
+| WEBHOOK_SECRET_ROTATION_FAILED | Falha na geração ou rotação da secret | não alterar endpoint | no | 500 |
 | WEBHOOK_PAYLOAD_INVALID | Payload do evento inválido | não inserir outbox, notificar | no | 400 |
+| WEBHOOK_PAYLOAD_TOO_LARGE | Payload excede 64KB | rejeitar evento sem truncar | no | 400 |
 | WEBHOOK_SIGNATURE_FAILED | assinatura recebida inválida pelo cliente | considerar falha de entrega | no | registrar e contar como delivery failed |
 | WEBHOOK_DELIVERY_TIMEOUT | Timeout de entrega | incrementar attempts e agendar retry | yes | retry/backoff |
 | WEBHOOK_DELIVERY_FAILED | Erro de rede/5xx | incrementar attempts e agendar retry | yes | retry/backoff |
@@ -263,7 +276,7 @@ Rate limits: Hipótese — por agora, não implementado; documentar comportament
 
 - Labels: `endpointId`, `tenantId`, `eventType`, `result` (low cardinality)
 - Logs (Pino structured): cada log inclui: `ts`, `level`, `service=webhook-worker|api`, `eventId`, `endpointId`, `attempt`, `statusCode`, `latencyMs`, `error`.
-  - Não logar secrets ou body completo em logs de erro padrão (maskar dados sensíveis).
+  - Não logar secrets ou body completo em logs de erro padrão; adicionar `webhook.secret` à configuração de redaction do logger.
 - Tracing (opentelemetry): spans:
   - `OrderService.changeStatus` (existing) — adicionar attribute `eventId` quando outbox inserido.
   - `WebhookWorker.processEvent` — attributes: `eventId`, `endpointId`, `attempt`.
@@ -278,8 +291,8 @@ Rate limits: Hipótese — por agora, não implementado; documentar comportament
   - `WEBHOOK_POLL_INTERVAL_MS` (default 2000)
   - `WEBHOOK_HTTP_TIMEOUT_MS` (default 10000)
   - `WEBHOOK_MAX_ATTEMPTS` (default 5)
-  - `WEBHOOK_WORKER_CONCURRENCY` (default 5)
-- Bibliotecas: `node-fetch`/`undici` ou `axios` (usar lightweight `undici`), `crypto` (nativo) para HMAC, `pino` para logs, `opentelemetry` para traces.
+  - `WEBHOOK_WORKER_CONCURRENCY` (default 1, single-worker no MVP)
+- Bibliotecas: `undici`, `crypto` (nativo) para HMAC, `pino` para logs, `opentelemetry` para traces.
 
 Compatibilidade: não altera contratos existentes de `GET /orders`; adiciona colunas/tabelas e novo módulo `src/modules/webhooks`.
 
@@ -301,7 +314,7 @@ Usar caminhos reais do repositório para integrar implementações:
 
 - `Arquivo`: src/app.ts
   - Estado atual observado: inicialização do Express, middlewares (auth, error handler, request logger).
-  - Mudança proposta: registrar novo router `routes/webhooks` e adicionar configuração de worker start/stop durante boot se `ENABLE_WEBHOOK_WORKER=true`.
+  - Mudança proposta: registrar o novo router de webhooks; o worker deve iniciar pelo entrypoint separado `src/worker.ts`, não pelo boot da API.
   - Risco: aumentar tempo de boot; usar feature flag.
   - Testes afetados: `tests/setup.ts` boot mocks; atualizar para suportar worker flag.
 
@@ -340,7 +353,7 @@ Hipótese: nomes e caminhos exatos conferidos via inspeção do workspace (exist
 | Risco | Probabilidade | Impacto | Mitigação | Plano de contingência |
 |---|---:|---:|---|---|
 | Duplicidade de entrega | Alta | Médio | Instruir consumidores a deduplicar por `X-Event-Id`; doc e exemplos | Retrocompat: reprocess manual via DLQ |
-| Crescimento indefinido da outbox | Médio | Alto | Política de retenção: truncar entregues após 90 dias; compactar histórico | Arquivar em S3 e remover rows antigas |
+| Crescimento indefinido da outbox | Médio | Alto | Definir política de retenção antes do go-live; a reunião mencionou arquivamento após aproximadamente 30 dias, sem fixar prazo final | Arquivar e remover rows antigas após decisão operacional |
 | Secret comprometido | Baixa | Alto | Rotação de secret com grace period; permitir revogação | Rotacionar e invalidar entregas antigas, notificar clientes |
 | Consumidor instável gerando DLQ | Médio | Médio | Alertas em DLQ, limitar retries | Operação reprocessa manualmente; criar backoff mais agressivo |
 | DB transaction regressions | Baixa | Alto | Cobertura de testes, revisão de PR e canary deploy | Rollback release e usar feature flag para outbox insertion |

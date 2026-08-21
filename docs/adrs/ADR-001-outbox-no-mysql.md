@@ -50,4 +50,4 @@ Se a transação principal fizer commit, o evento estará persistido para entreg
 
 - Transcrição: [09:06]-[09:08], decisão por outbox em MySQL com índices por status e `created_at`; [09:40]-[09:41], inserção do evento dentro da transação de `changeStatus`; [09:51]-[09:52], UUID e snapshot do payload.
 - Código-base: `src/modules/orders/order.service.ts`, `prisma/schema.prisma`.
-- Documentos relacionados: `docs/PRD.md`, `docs/RFC.md`, `docs/FDD.md` existem, mas ainda estão como placeholders.
+- Documentos relacionados: `docs/PRD.md`, `docs/RFC.md` e `docs/FDD.md` detalham os requisitos e a proposta de implementação.

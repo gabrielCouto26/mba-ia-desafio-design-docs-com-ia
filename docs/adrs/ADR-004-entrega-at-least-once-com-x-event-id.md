@@ -50,4 +50,4 @@ Os demais headers mínimos definidos para a entrega são `X-Signature`, `X-Times
 
 - Transcrição: [09:24]-[09:26], escolha de at-least-once e deduplicação por `X-Event-Id`; [09:44]-[09:45], lista de headers; [09:12]-[09:14], limitação de ordering enquanto houver single-worker.
 - Código-base: `prisma/schema.prisma` usa `@default(uuid())` para entidades principais, reforçando UUID como padrão de identificação.
-- Documentos relacionados: `docs/PRD.md`, `docs/RFC.md`, `docs/FDD.md` existem, mas ainda estão como placeholders.
+- Documentos relacionados: `docs/PRD.md`, `docs/RFC.md` e `docs/FDD.md` detalham os requisitos e a proposta de implementação.

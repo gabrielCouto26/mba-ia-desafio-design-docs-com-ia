@@ -51,5 +51,5 @@ Também será obrigatório cadastrar URLs HTTPS, e cada envio deve incluir `X-Ti
 ## Evidências e rastreabilidade
 
 - Transcrição: [09:19]-[09:22], decisão por HMAC-SHA256, secret por endpoint e rotação com grace period de 24h; [09:23], URL HTTPS obrigatória; [09:44], headers `X-Signature` e `X-Timestamp`.
-- Código-base: `src/modules/auth/auth.service.ts` e `src/middlewares/auth.middleware.ts` cobrem autenticação da API, mas não chamadas outbound; `src/shared/logger/index.ts` já redige campos sensíveis como tokens e senhas, padrão que deve ser estendido para secrets de webhook.
-- Documentos relacionados: `docs/PRD.md`, `docs/RFC.md`, `docs/FDD.md` existem, mas ainda estão como placeholders.
+- Código-base: `src/modules/auth/auth.service.ts` e `src/middlewares/auth.middleware.ts` cobrem autenticação da API, mas não chamadas outbound; `src/shared/logger/index.ts` redige tokens e senhas, e deverá ser estendido para secrets de webhook.
+- Documentos relacionados: `docs/PRD.md`, `docs/RFC.md` e `docs/FDD.md` detalham os requisitos e a proposta de implementação.

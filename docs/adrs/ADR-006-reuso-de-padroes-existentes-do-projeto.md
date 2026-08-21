@@ -50,4 +50,4 @@ O processamento assíncrono deve ficar em entrypoint separado, mas a lógica de 
 
 - Transcrição: [09:27]-[09:30], decisão por `src/modules/webhooks`, reuso de `AppError`, Pino, middleware de erro, schemas Zod, códigos `WEBHOOK_` e Prisma; [09:35]-[09:36], replay com role `ADMIN`.
 - Código-base: `src/app.ts`, `src/routes/index.ts`, `src/modules/orders/order.routes.ts`, `src/modules/orders/order.service.ts`, `src/middlewares/auth.middleware.ts`, `src/middlewares/error.middleware.ts`, `src/shared/errors/index.ts`, `src/shared/logger/index.ts`.
-- Documentos relacionados: `docs/PRD.md`, `docs/RFC.md`, `docs/FDD.md` existem, mas ainda estão como placeholders.
+- Documentos relacionados: `docs/PRD.md`, `docs/RFC.md` e `docs/FDD.md` detalham os requisitos e a proposta de implementação.

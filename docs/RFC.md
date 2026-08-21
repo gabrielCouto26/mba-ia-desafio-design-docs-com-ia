@@ -34,7 +34,7 @@ Os componentes principais sao:
 - **Outbox no MySQL:** tabela persistente para registrar eventos dentro da mesma transacao que altera o pedido e grava `order_status_history`. O evento deve representar um snapshot do pedido no momento da mudanca de status.
 - **Worker de entrega:** processo Node separado da API, acionado por entrypoint proprio, que consulta eventos pendentes por polling a cada 2 segundos e envia chamadas HTTP aos endpoints configurados.
 - **Entrega assinada:** cada endpoint de cliente tera secret propria. As chamadas outbound serao assinadas com HMAC-SHA256 e headers de identificacao e verificacao, incluindo `X-Event-Id`, `X-Signature`, `X-Timestamp` e `X-Webhook-Id`.
-- **Retry e DLQ:** falhas de entrega serao tratadas com ate 5 tentativas em backoff progressivo. Eventos esgotados serao preservados em dead letter queue separada, com replay manual restrito a `ADMIN`.
+- **Retry e DLQ:** falhas de entrega serao tratadas com ate 5 tentativas nos intervalos fixos de `1m/5m/30m/2h/12h`. Eventos esgotados serao preservados em dead letter queue separada, com replay manual restrito a `ADMIN`.
 - **Observabilidade inicial:** o sistema deve expor historico de entregas para clientes e registrar logs estruturados com Pino para processamento, falhas, latencia de resposta e replays administrativos.
 
 O fluxo de alto nivel e:
@@ -43,9 +43,9 @@ O fluxo de alto nivel e:
 2. Na mesma transacao SQL, o sistema grava o novo status, o historico e o evento na outbox, somente para clientes/endpoints interessados naquele status.
 3. O worker busca eventos pendentes, assina o payload e envia a requisicao HTTPS ao consumidor.
 4. Em sucesso, a entrega e marcada para consulta posterior. Em falha ou timeout, o evento e reagendado conforme a politica de retry.
-5. Apos esgotar tentativas, o evento vai para DLQ e pode ser reprocessado manualmente por endpoint administrativo.
+5. Apos esgotar tentativas, o evento vai para DLQ e pode ser reprocessado manualmente por `POST /admin/webhooks/dead-letter/:id/replay`, restrito a `ADMIN`.
 
-Esta proposta nao resolve, nesta fase, dashboard visual para clientes, notificacao por email quando um webhook falha, rate limiting de saida por cliente, escalabilidade com multiplos workers nem uma garantia forte de ordenacao global. Esses pontos serao revisitados apos uso real e telemetria operacional.
+Esta proposta nao resolve, nesta fase, dashboard visual para clientes, notificacao por email quando um webhook falha, rate limiting de saida por cliente, escalabilidade com multiplos workers nem uma garantia forte de ordenacao global. A politica definitiva de retencao tambem permanece em aberto; a reuniao apenas mencionou arquivamento apos aproximadamente 30 dias. Esses pontos serao revisitados apos uso real e telemetria operacional.
 
 ## 5. Alternativas consideradas
 

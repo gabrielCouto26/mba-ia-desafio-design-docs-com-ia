@@ -63,11 +63,11 @@ Principais premissas: (i) a alteração de status do pedido continua sendo fonte
 Incluso: (requisitos funcionais principais abaixo)
 
 #### RF-001 CRUD de Endpoints de Webhook
-- Descricao: permitir que administradores criem, listem, atualizem e desativem endpoints de webhook (nome, URL, secret, filtros, active).
+- Descricao: permitir que usuários autenticados criem, listem, atualizem e desativem endpoints de webhook (nome, URL, secret gerada pela plataforma, filtros por status, active).
 - Valor: integrações configuráveis por cliente e controle administrativo sobre canais de entrega.
-- Fluxo principal: `ADMIN` envia criação; sistema valida URL/secret e persiste entidade.
-- Fluxos alternativos e excecoes: validação de URL inválida; secret ausente => recusa; desativação idempotente.
-- Erros previstos: `WEBHOOK_INVALID_URL`, `WEBHOOK_SECRET_MISSING`, `WEBHOOK_ENDPOINT_ALREADY_EXISTS`.
+- Fluxo principal: usuário autenticado envia criação; sistema valida URL, gera a secret e persiste a entidade.
+- Fluxos alternativos e excecoes: validação de URL inválida; falha na geração/rotação da secret; desativação idempotente.
+- Erros previstos: `WEBHOOK_INVALID_URL`, `WEBHOOK_SECRET_ROTATION_FAILED`, `WEBHOOK_ENDPOINT_ALREADY_EXISTS`.
 - Prioridade: alta
 
 #### RF-002 Emissão de evento no fluxo de pedidos
@@ -95,9 +95,9 @@ Incluso: (requisitos funcionais principais abaixo)
 - Prioridade: alta
 
 #### RF-005 Histórico de entregas e consulta
-- Descricao: expor APIs para consultar histórico de entregas por `eventId` e `endpointId`, incluindo tentativas e erros.
+- Descricao: expor `GET /webhooks/:id/deliveries` para consultar os últimos 100 registros por endpoint, incluindo tentativas, payload, response, erros e latência.
 - Valor: permite investigação e auditoria por Ops e suporte.
-- Fluxo principal: `ADMIN` consulta entregas -> recebe lista de tentativas com timestamps e status.
+- Fluxo principal: usuário autenticado consulta entregas -> recebe os últimos 100 registros com timestamps, status e detalhes operacionais.
 - Fluxos alternativos e excecoes: ausência de registro -> 404.
 - Erros previstos: inconsistência de registros por falhas de gravação.
 - Prioridade: alta
@@ -119,11 +119,11 @@ Incluso: (requisitos funcionais principais abaixo)
 - Prioridade: alta
 
 #### RF-008 Validação e política de ativação de endpoints
-- Descricao: validar URL (ex: https) e secret na criação; permitir ativar/desativar endpoint sem perder eventos históricos.
+- Descricao: validar URL (ex: https), gerar secret na criação e permitir ativar/desativar endpoint sem perder eventos históricos.
 - Valor: reduz riscos de vazamento e falhas por endpoints mal configurados.
 - Fluxo principal: criação -> validação -> ativação.
-- Fluxos alternativos e excecoes: se secret ausente -> recusa; se URL inválida -> recusa.
-- Erros previstos: `WEBHOOK_INVALID_URL`, `WEBHOOK_SECRET_MISSING`.
+- Fluxos alternativos e excecoes: falha na geração/rotação da secret; se URL inválida -> recusa.
+- Erros previstos: `WEBHOOK_INVALID_URL`, `WEBHOOK_SECRET_ROTATION_FAILED`.
 - Prioridade: alta
 
 #### RF-009 (Opcional) Filtros por tipo de evento e tenant
@@ -187,15 +187,15 @@ Incluso: (requisitos funcionais principais abaixo)
   - Estratégia de mitigação: definir política de retenção/archiving e criar alertas em `webhook_dlq_size` e métricas de backlog.
   - Sinal de alerta: aumento contínuo do backlog pendente e crescimento de tabela beyond threshold.
 
-- Risco: Endpoints externos mal configurados (invalid URL/secret) causando falhas e ruído.
+- Risco: Endpoints externos mal configurados (invalid URL/secret rotation) causando falhas e ruído.
   - Probabilidade: média
   - Impacto: baixo/medio
-  - Estratégia de mitigação: validação na criação, permitir desativação rápida e exposição de erros específicos (`WEBHOOK_INVALID_URL`, `WEBHOOK_SECRET_MISSING`).
+  - Estratégia de mitigação: validação na criação, geração/rotação controlada da secret, permitir desativação rápida e exposição de erros específicos (`WEBHOOK_INVALID_URL`, `WEBHOOK_SECRET_ROTATION_FAILED`).
   - Sinal de alerta: pico de erros de validação e tentativas falhas imediatamente após criação.
 
 ## 11. Critérios de aceitação
 
-- CA-001: CRUD de endpoints implementado e protegido por role `ADMIN`. (verificável via API test)
+- CA-001: CRUD de endpoints implementado e protegido por autenticação JWT. (verificável via API test)
 - CA-002: Ao alterar status de pedido em cenário de integração, existe registro para entrega consultável por `eventId` (integração testada em ambiente de staging).
 - CA-003: Sistema registra tentativas de entrega e expõe histórico consultável por `eventId` e `endpointId`.
 - CA-004: Reprocessamento manual de DLQ cria nova tentativa e atualiza histórico (test automático/manual).
