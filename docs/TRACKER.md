@@ -1,6 +1,6 @@
 | ID | Documento | Tipo | Conteudo (resumo) | Fonte | Localizacao |
 |---|---|---|---|---|---|
-| PRD-MET-001 | [docs/PRD.md](docs/PRD.md) | Requisito Não Funcional | Meta de primeira entrega: 90% dos primeiros envios <= 10s | TRANSCRICAO | [09:02] Marcos |
+| PRD-MET-001 | [docs/PRD.md](docs/PRD.md) | Requisito Não Funcional | Meta de primeira entrega: 90% dos primeiros envios <= 10s (hipótese operacional) | PRD (hipótese; a transcrição só registra o limite qualitativo de abaixo de 10s) | Seção 4 de [docs/PRD.md](docs/PRD.md); contexto qualitativo em [TRANSCRICAO.md](TRANSCRICAO.md) [09:02] Marcos |
 | PRD-REQ-001 | [docs/PRD.md](docs/PRD.md) | Requisito Funcional | CRUD de endpoints de webhook (create/list/patch/delete) com validação de URL/secret | TRANSCRICAO | [09:31] Marcos |
 | PRD-REQ-002 | [docs/PRD.md](docs/PRD.md) | Requisito Funcional | Inserir evento na outbox dentro da mesma transação de mudança de status do pedido | TRANSCRICAO | [09:41] Bruno |
 | RFC-DEC-001 | [docs/adrs/ADR-001-outbox-no-mysql.md](docs/adrs/ADR-001-outbox-no-mysql.md) | Decisao | Adotar padrão Outbox no MySQL para persistir eventos de webhook | TRANSCRICAO | [09:06] Diego |

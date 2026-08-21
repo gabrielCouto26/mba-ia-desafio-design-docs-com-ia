@@ -71,12 +71,12 @@ Excluído (fora do MVP):
      - Método `POST` para `endpoint.url`
      - Headers obrigatórios: `Content-Type: application/json`, `X-Event-Id`, `X-Timestamp`, `X-Webhook-Id`, `X-Signature` (HMAC-SHA256)
      - Body: o payload persistido em outbox (ou versão compactada/limitada)
-  5. Enviar com timeout (hipótese: 5s per request) e acompanhar código HTTP e latency.
+  5. Enviar com timeout de 10s por request e acompanhar código HTTP e latency.
   6. On success (HTTP 2xx): marcar entrega como `delivered`, incrementar `attempts`, salvar `delivered_at` e registro em `webhook_delivery_history`.
   7. On client error (HTTP 4xx): considerar não-recuperável dependendo do código; para 410/404 marcar `permanent_failed` e enviar para DLQ; para 429/403 considerar retry with backoff.
   8. On server error (HTTP 5xx) or timeout/network error: incrementar `attempts`, calcular `next_try_at` por backoff, set status back to `pending` e release lock.
 
-- Timeout e cancelamento: usar request timeout configurável (`WEBHOOK_HTTP_TIMEOUT_MS`, default 5000ms). Se exceder, tratar como retriable network error.
+- Timeout e cancelamento: usar request timeout configurável (`WEBHOOK_HTTP_TIMEOUT_MS`, default 10000ms). Se exceder, tratar como retriable network error.
 
 - Observabilidade: cada tentativa gera log estruturado com `eventId`, `endpointId`, `attempt`, `statusCode`, `latencyMs`, `error`.
 
@@ -87,8 +87,8 @@ Excluído (fora do MVP):
   - Não-recoveráveis: HTTP 4xx (exceto 429), invalid URL, signature mismatch at receiver (o receptor deve responder 4xx).
 - Política:
   - Max attempts = 5 (configurável `WEBHOOK_MAX_ATTEMPTS`).
-  - Backoff exponencial com jitter: base=2s, multiplier exponencial, jitter Uniform(0,1000ms).
-  - next_try_at = now + base * 2^(attempts-1) + jitter.
+  - Backoff fixo entre tentativas: 1m, 5m, 30m, 2h e 12h, conforme a reunião.
+  - `next_try_at` deve usar o intervalo correspondente à tentativa atual; não adicionar jitter nem calcular uma fórmula exponencial alternativa.
 - Tratamento:
   - Se attempts < max: agendar next_try_at e status = `pending`.
   - Se attempts >= max: mover para DLQ (status `dead_letter`) e registrar em `webhook_dlq`.
@@ -244,8 +244,8 @@ Rate limits: Hipótese — por agora, não implementado; documentar comportament
 
 ## 7. Estratégias de resiliencia
 
-- Timeouts: default HTTP timeout = 5000ms; configurável `WEBHOOK_HTTP_TIMEOUT_MS`.
-- Retries: max 5; exponencial backoff com jitter (base 2s).
+- Timeouts: default HTTP timeout = 10000ms (10s); configurável `WEBHOOK_HTTP_TIMEOUT_MS`.
+- Retries: max 5; backoff fixo de 1m/5m/30m/2h/12h, conforme decisão da reunião.
 - Fallback: mover para DLQ; reprocessamento manual por `ADMIN`.
 - Concorrência/locks: lease lock via `locked_until` column; UPDATE ... WHERE ... to acquire.
 - Idempotência: deduplicação pelo consumidor usando `X-Event-Id`.
@@ -276,7 +276,7 @@ Rate limits: Hipótese — por agora, não implementado; documentar comportament
 - Banco: MySQL atual usado via Prisma — adicionar migration para `webhook_outbox`, `webhook_endpoints`, `webhook_delivery_history`, `webhook_dlq`.
 - Variáveis de ambiente:
   - `WEBHOOK_POLL_INTERVAL_MS` (default 2000)
-  - `WEBHOOK_HTTP_TIMEOUT_MS` (default 5000)
+  - `WEBHOOK_HTTP_TIMEOUT_MS` (default 10000)
   - `WEBHOOK_MAX_ATTEMPTS` (default 5)
   - `WEBHOOK_WORKER_CONCURRENCY` (default 5)
 - Bibliotecas: `node-fetch`/`undici` ou `axios` (usar lightweight `undici`), `crypto` (nativo) para HMAC, `pino` para logs, `opentelemetry` para traces.
