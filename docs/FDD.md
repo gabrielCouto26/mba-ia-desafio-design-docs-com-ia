@@ -120,7 +120,7 @@ Observação: todas as rotas exigem autenticação `Bearer JWT`. O CRUD e a cons
 #### [POST] /webhooks
 
 - Objetivo: criar um endpoint de webhook
-- Autenticação: `Authorization: Bearer <token>` (role `ADMIN`)
+- Autenticação: `Authorization: Bearer <token>` (qualquer role autenticada)
 - Headers: `Content-Type: application/json`
 - Request:
 
@@ -157,7 +157,7 @@ Observação: todas as rotas exigem autenticação `Bearer JWT`. O CRUD e a cons
 #### [GET] /webhooks
 
 - Objetivo: listar endpoints configurados
-- Autenticação: `Authorization: Bearer <token>` (role `ADMIN`)
+- Autenticação: `Authorization: Bearer <token>` (qualquer role autenticada)
 - Headers: opcional `page`, `limit`
 - Request: vazio
 - Response:
@@ -174,7 +174,7 @@ Observação: todas as rotas exigem autenticação `Bearer JWT`. O CRUD e a cons
 #### [PATCH] /webhooks/:id
 
 - Objetivo: atualizar nome/url/secret/active/filters
-- Autenticação: `Authorization: Bearer <token>` (role `ADMIN`)
+- Autenticação: `Authorization: Bearer <token>` (qualquer role autenticada)
 - Headers: `Content-Type: application/json`
 - Request exemplo:
 
@@ -197,7 +197,7 @@ Observação: todas as rotas exigem autenticação `Bearer JWT`. O CRUD e a cons
 #### [POST] /webhooks/:id/deactivate
 
 - Objetivo: desativar rapidamente um endpoint (idempotente)
-- Autenticação: `Authorization: Bearer <token>` (role `ADMIN`)
+- Autenticação: `Authorization: Bearer <token>` (qualquer role autenticada)
 - Response: 200 OK
 - Erros: `WEBHOOK_ENDPOINT_NOT_FOUND`
 
